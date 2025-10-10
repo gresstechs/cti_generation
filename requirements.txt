@@ -1,0 +1,5 @@
+requests
+stix2
+taxii2-client
+pandas
+matplotlib
