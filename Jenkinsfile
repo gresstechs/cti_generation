@@ -72,7 +72,7 @@ pipeline {
           # List copied files
           echo ""
           echo "Files in Grafana CSV directory:"
-          ls -lh "$GRAFANA_CSV_DIR"/ | grep -E "cti_.*\.(csv|json)$" || echo "No files found"
+          ls -lh "$GRAFANA_CSV_DIR"/ | grep "cti_" || echo "No files found"
           
           echo ""
           echo "✅ Files copied successfully!"
