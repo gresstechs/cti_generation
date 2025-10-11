@@ -42,17 +42,29 @@ pipeline {
           echo "Copying files to Grafana..."
           echo "=========================================="
           
-          # Copy all CSV and JSON files
-          echo "Copying CSV files..."
-          cp out/cti_pulses_*.csv "$GRAFANA_CSV_DIR/" 2>/dev/null || echo "⚠️  No pulses CSV found"
-          cp out/cti_indicators_*.csv "$GRAFANA_CSV_DIR/" 2>/dev/null || echo "⚠️  No indicators CSV found"
+          # Create directory if it doesn't exist
+          mkdir -p "$GRAFANA_CSV_DIR"
           
+          # Copy all CSV files with explicit loop
+          echo "Copying CSV files..."
+          for file in out/cti_*.csv; do
+            if [ -f "$file" ]; then
+              echo "  Copying: $file"
+              cp "$file" "$GRAFANA_CSV_DIR/"
+            fi
+          done
+          
+          # Copy all JSON files with explicit loop
           echo "Copying JSON files..."
-          cp out/cti_grafana_*.json "$GRAFANA_CSV_DIR/" 2>/dev/null || echo "⚠️  No grafana JSON found"
-          cp out/cti_summary_*.json "$GRAFANA_CSV_DIR/" 2>/dev/null || echo "⚠️  No summary JSON found"
-          cp out/cti_raw_*.json "$GRAFANA_CSV_DIR/" 2>/dev/null || echo "⚠️  No raw JSON found"
+          for file in out/cti_*.json; do
+            if [ -f "$file" ]; then
+              echo "  Copying: $file"
+              cp "$file" "$GRAFANA_CSV_DIR/"
+            fi
+          done
           
           # Set correct permissions
+          echo ""
           echo "Setting file permissions..."
           sudo chown grafana:grafana "$GRAFANA_CSV_DIR"/* 2>/dev/null || true
           sudo chmod 644 "$GRAFANA_CSV_DIR"/* 2>/dev/null || true
@@ -60,7 +72,7 @@ pipeline {
           # List copied files
           echo ""
           echo "Files in Grafana CSV directory:"
-          ls -lh "$GRAFANA_CSV_DIR"/ | grep cti_
+          ls -lh "$GRAFANA_CSV_DIR"/ | grep -E "cti_.*\.(csv|json)$" || echo "No files found"
           
           echo ""
           echo "✅ Files copied successfully!"
