@@ -4,10 +4,13 @@ import json
 import requests
 import pandas as pd
 from datetime import datetime
-from dotenv import load_dotenv
 
-# Load environment variables from .env file if present
-load_dotenv()
+# Load environment variables from .env file if present (for local development)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 # Get API key securely
 OTX_API_KEY = os.getenv("OTX_API_KEY")
