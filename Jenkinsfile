@@ -39,63 +39,57 @@ pipeline {
       steps {
         sh '''
           echo "=========================================="
-          echo "Copying files to Grafana..."
+          echo "Copying and renaming files for Grafana..."
           echo "=========================================="
           
-          # Create directory if it doesn't exist (Jenkins user should have access)
-          mkdir -p "$GRAFANA_CSV_DIR" 2>/dev/null || {
-            echo "⚠️  Cannot create $GRAFANA_CSV_DIR directly. Trying alternative location..."
-            GRAFANA_CSV_DIR="${WORKSPACE}/grafana-data"
-            mkdir -p "$GRAFANA_CSV_DIR"
-            echo "Using alternative directory: $GRAFANA_CSV_DIR"
-          }
+          GRAFANA_CSV_DIR="/var/lib/grafana/csv"
+          mkdir -p "$GRAFANA_CSV_DIR"
           
-          # Remove old CTI files if we have permission
-          echo "Cleaning old CTI files..."
-          rm -f "$GRAFANA_CSV_DIR"/cti_* 2>/dev/null || {
-            echo "⚠️  Limited permissions - some old files may remain"
-          }
+          # Copy and RENAME to fixed filenames (removes timestamp)
+          echo "Processing files..."
           
-          # Copy all CSV files
-          echo "Copying CSV files..."
-          copied_csv=0
-          for file in out/cti_*.csv; do
+          # Copy pulses CSV with fixed name
+          for file in out/cti_pulses_*.csv; do
             if [ -f "$file" ]; then
-              echo "  Copying: $(basename $file)"
-              cp "$file" "$GRAFANA_CSV_DIR/" && copied_csv=$((copied_csv + 1)) || {
-                echo "  ❌ Failed to copy $file"
-              }
+              echo "  Copying pulses: $file → cti_pulses_latest.csv"
+              cp "$file" "$GRAFANA_CSV_DIR/cti_pulses_latest.csv"
             fi
           done
           
-          # Copy all JSON files  
-          echo "Copying JSON files..."
-          copied_json=0
-          for file in out/cti_*.json; do
+          # Copy indicators CSV with fixed name
+          for file in out/cti_indicators_*.csv; do
             if [ -f "$file" ]; then
-              echo "  Copying: $(basename $file)"
-              cp "$file" "$GRAFANA_CSV_DIR/" && copied_json=$((copied_json + 1)) || {
-                echo "  ❌ Failed to copy $file"
-              }
+              echo "  Copying indicators: $file → cti_indicators_latest.csv"
+              cp "$file" "$GRAFANA_CSV_DIR/cti_indicators_latest.csv"
             fi
           done
           
-          # Set permissions if possible (without sudo)
-          echo ""
-          echo "Setting file permissions (if possible)..."
-          chmod 644 "$GRAFANA_CSV_DIR"/cti_* 2>/dev/null || {
-            echo "⚠️  Could not set file permissions - running with current user permissions"
-          }
+          # Copy grafana JSON with fixed name
+          for file in out/cti_grafana_*.json; do
+            if [ -f "$file" ]; then
+              echo "  Copying grafana data: $file → cti_grafana_latest.json"
+              cp "$file" "$GRAFANA_CSV_DIR/cti_grafana_latest.json"
+            fi
+          done
           
-          # List final files
-          echo ""
-          echo "Files in target directory ($GRAFANA_CSV_DIR):"
-          ls -lh "$GRAFANA_CSV_DIR"/ | grep "cti_" || echo "No CTI files found"
+          # Copy summary JSON with fixed name
+          for file in out/cti_summary_*.json; do
+            if [ -f "$file" ]; then
+              echo "  Copying summary: $file → cti_summary_latest.json"
+              cp "$file" "$GRAFANA_CSV_DIR/cti_summary_latest.json"
+            fi
+          done
           
           echo ""
-          echo "✅ File copy completed!"
-          echo "📊 Copied: $copied_csv CSV files, $copied_json JSON files"
-          echo "📁 Location: $GRAFANA_CSV_DIR"
+          echo "Setting permissions..."
+          chmod 644 "$GRAFANA_CSV_DIR"/cti_*_latest.* 2>/dev/null || true
+          
+          echo ""
+          echo "Files in Grafana directory:"
+          ls -lh "$GRAFANA_CSV_DIR"/cti_*_latest.*
+          
+          echo ""
+          echo "✅ Files updated successfully!"
         '''
       }
     }
@@ -108,25 +102,30 @@ pipeline {
       script {
         // Check if files were copied to Grafana directory
         def grafanaFiles = sh(
-          script: 'ls /var/lib/grafana/csv/cti_* 2>/dev/null | wc -l || echo "0"',
+          script: 'ls /var/lib/grafana/csv/cti_*_latest.* 2>/dev/null | wc -l || echo "0"',
           returnStdout: true
         ).trim()
         
         if (grafanaFiles == "0") {
           echo "📝 MANUAL SETUP REQUIRED:"
-          echo "   Files are available in: ${WORKSPACE}/grafana-data/"
-          echo "   To manually copy to Grafana:"
-          echo "   sudo cp ${WORKSPACE}/grafana-data/cti_* /var/lib/grafana/csv/"
-          echo "   sudo chown grafana:grafana /var/lib/grafana/csv/cti_*"
-          echo "   sudo chmod 644 /var/lib/grafana/csv/cti_*"
+          echo "   Files are available in: ${WORKSPACE}/out/"
+          echo "   To manually copy to Grafana with fixed names:"
+          echo "   cp ${WORKSPACE}/out/cti_pulses_*.csv /var/lib/grafana/csv/cti_pulses_latest.csv"
+          echo "   cp ${WORKSPACE}/out/cti_indicators_*.csv /var/lib/grafana/csv/cti_indicators_latest.csv"
+          echo "   cp ${WORKSPACE}/out/cti_grafana_*.json /var/lib/grafana/csv/cti_grafana_latest.json"
+          echo "   cp ${WORKSPACE}/out/cti_summary_*.json /var/lib/grafana/csv/cti_summary_latest.json"
+          echo "   chmod 644 /var/lib/grafana/csv/cti_*_latest.*"
+        } else {
+          echo "✅ Successfully copied ${grafanaFiles} files to Grafana with fixed names"
         }
       }
     }
     
     success {
       echo "✅ Pipeline completed successfully!"
-      echo "📊 Data available in Jenkins artifacts and prepared for Grafana"
+      echo "📊 Data available in Jenkins artifacts and copied to Grafana with fixed filenames"
       echo "🌐 Access Grafana at: http://your-ec2-ip:3000"
+      echo "📁 Fixed filenames: cti_pulses_latest.csv, cti_indicators_latest.csv, etc."
     }
     
     failure {
