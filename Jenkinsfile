@@ -69,7 +69,28 @@ pipeline {
           sudo chown grafana:grafana "$GRAFANA_CSV_DIR"/* 2>/dev/null || true
           sudo chmod 644 "$GRAFANA_CSV_DIR"/* 2>/dev/null || true
           
-          # List copied files
+          # Delete old files, keep only the latest of each type
+          echo ""
+          echo "Cleaning up old files (keeping only latest)..."
+          cd "$GRAFANA_CSV_DIR"
+          
+          # Keep only latest pulses CSV
+          ls -t cti_pulses_*.csv 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
+          echo "  Kept latest: $(ls -t cti_pulses_*.csv 2>/dev/null | head -1)"
+          
+          # Keep only latest indicators CSV
+          ls -t cti_indicators_*.csv 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
+          echo "  Kept latest: $(ls -t cti_indicators_*.csv 2>/dev/null | head -1)"
+          
+          # Keep only latest grafana JSON
+          ls -t cti_grafana_*.json 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
+          echo "  Kept latest: $(ls -t cti_grafana_*.json 2>/dev/null | head -1)"
+          
+          # Keep only latest summary JSON
+          ls -t cti_summary_*.json 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
+          echo "  Kept latest: $(ls -t cti_summary_*.json 2>/dev/null | head -1)"
+          
+          # List final files
           echo ""
           echo "Files in Grafana CSV directory:"
           ls -lh "$GRAFANA_CSV_DIR"/ | grep "cti_" || echo "No files found"
