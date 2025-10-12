@@ -45,21 +45,25 @@ pipeline {
           # Create directory if it doesn't exist
           mkdir -p "$GRAFANA_CSV_DIR"
           
-          # Copy all CSV files with explicit loop
+          # First, DELETE ALL old files completely
+          echo "Removing ALL old files..."
+          sudo rm -f "$GRAFANA_CSV_DIR"/cti_* 2>/dev/null || true
+          
+          # Copy all CSV files
           echo "Copying CSV files..."
           for file in out/cti_*.csv; do
             if [ -f "$file" ]; then
-              echo "  Copying: $file"
-              cp "$file" "$GRAFANA_CSV_DIR/"
+              echo "  Copying: $(basename $file)"
+              sudo cp "$file" "$GRAFANA_CSV_DIR/"
             fi
           done
           
-          # Copy all JSON files with explicit loop
+          # Copy all JSON files
           echo "Copying JSON files..."
           for file in out/cti_*.json; do
             if [ -f "$file" ]; then
-              echo "  Copying: $file"
-              cp "$file" "$GRAFANA_CSV_DIR/"
+              echo "  Copying: $(basename $file)"
+              sudo cp "$file" "$GRAFANA_CSV_DIR/"
             fi
           done
           
@@ -69,31 +73,10 @@ pipeline {
           sudo chown grafana:grafana "$GRAFANA_CSV_DIR"/* 2>/dev/null || true
           sudo chmod 644 "$GRAFANA_CSV_DIR"/* 2>/dev/null || true
           
-          # Delete old files, keep only the latest of each type
-          echo ""
-          echo "Cleaning up old files (keeping only latest)..."
-          cd "$GRAFANA_CSV_DIR"
-          
-          # Keep only latest pulses CSV
-          ls -t cti_pulses_*.csv 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
-          echo "  Kept latest: $(ls -t cti_pulses_*.csv 2>/dev/null | head -1)"
-          
-          # Keep only latest indicators CSV
-          ls -t cti_indicators_*.csv 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
-          echo "  Kept latest: $(ls -t cti_indicators_*.csv 2>/dev/null | head -1)"
-          
-          # Keep only latest grafana JSON
-          ls -t cti_grafana_*.json 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
-          echo "  Kept latest: $(ls -t cti_grafana_*.json 2>/dev/null | head -1)"
-          
-          # Keep only latest summary JSON
-          ls -t cti_summary_*.json 2>/dev/null | tail -n +2 | xargs rm -f 2>/dev/null || true
-          echo "  Kept latest: $(ls -t cti_summary_*.json 2>/dev/null | head -1)"
-          
           # List final files
           echo ""
           echo "Files in Grafana CSV directory:"
-          ls -lh "$GRAFANA_CSV_DIR"/ | grep "cti_" || echo "No files found"
+          ls -lh "$GRAFANA_CSV_DIR"/ | grep "cti_"
           
           echo ""
           echo "✅ Files copied successfully!"
