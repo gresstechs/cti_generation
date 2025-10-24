@@ -3,7 +3,44 @@ import os
 import json
 import requests
 import pandas as pd
+import glob
+import shutil
 from datetime import datetime
+
+def cleanup_old_files():
+    """Remove old CTI output files, keeping only the most recent 3 of each type"""
+    print("🧹 Cleaning up old output files...")
+    
+    file_patterns = [
+        "out/cti_pulses_*.csv",
+        "out/cti_indicators_*.csv", 
+        "out/cti_summary_*.json",
+        "out/cti_grafana_*.json",
+        "out/cti_raw_*.json",
+        "out/otx_indicators_*.csv",  # Legacy files
+        "out/otx_pulses_*.json"      # Legacy files
+    ]
+    
+    total_deleted = 0
+    for pattern in file_patterns:
+        files = glob.glob(pattern)
+        if len(files) > 3:  # Keep most recent 3 files
+            # Sort by modification time, newest first
+            files.sort(key=os.path.getmtime, reverse=True)
+            files_to_delete = files[3:]  # Delete all but the 3 most recent
+            
+            for file_path in files_to_delete:
+                try:
+                    os.remove(file_path)
+                    print(f"   Deleted: {os.path.basename(file_path)}")
+                    total_deleted += 1
+                except OSError as e:
+                    print(f"   ⚠️  Could not delete {file_path}: {e}")
+    
+    if total_deleted > 0:
+        print(f"✅ Cleaned up {total_deleted} old files")
+    else:
+        print("✅ No old files to clean up")
 
 # Load environment variables from .env file if present (for local development)
 try:
@@ -25,6 +62,9 @@ print("Fetching CTI data from AlienVault OTX...")
 r = requests.get(url, headers=headers, timeout=45)
 r.raise_for_status()
 data = r.json()
+
+# Clean up old files before creating new ones
+cleanup_old_files()
 
 os.makedirs("out", exist_ok=True)
 ts = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -68,6 +108,9 @@ for pulse in data.get("results", []):
     author = pulse.get("author_name") or pulse.get("author", {}).get("username")
     tlp = pulse.get("tlp") or "unknown"
     adversary = pulse.get("adversary") or ""
+    malware_families = ",".join(pulse.get("malware_families", []) or [])
+    attack_ids = ",".join(pulse.get("attack_ids", []) or [])
+    tags = ",".join(pulse.get("tags", []) or [])
     
     indicators = pulse.get("indicators", []) or []
     for ind in indicators:
@@ -86,6 +129,9 @@ for pulse in data.get("results", []):
             "pulse_author": author,
             "pulse_tlp": tlp,
             "pulse_adversary": adversary,
+            "pulse_malware_families": malware_families,
+            "pulse_attack_ids": attack_ids,
+            "pulse_tags": tags,
             "pulse_created": pulse.get("created"),
             "fetch_timestamp": fetch_date
         })
@@ -162,6 +208,31 @@ with open(raw_json, "w") as f:
     json.dump(data, f, indent=2)
 print(f"✅ Saved raw JSON: {raw_json}")
 
+def create_latest_links():
+    """Create 'latest' copies of the most recent files for easy access"""
+    print("🔗 Creating latest file links...")
+    
+    file_mappings = {
+        "out/cti_pulses_*.csv": "out/cti_pulses_latest.csv",
+        "out/cti_indicators_*.csv": "out/cti_indicators_latest.csv", 
+        "out/cti_summary_*.json": "out/cti_summary_latest.json",
+        "out/cti_grafana_*.json": "out/cti_grafana_latest.json",
+        "out/cti_raw_*.json": "out/cti_raw_latest.json"
+    }
+    
+    for pattern, latest_name in file_mappings.items():
+        files = glob.glob(pattern)
+        if files:
+            # Get the most recent file
+            latest_file = max(files, key=os.path.getmtime)
+            try:
+                # Copy to latest filename
+                import shutil
+                shutil.copy2(latest_file, latest_name)
+                print(f"   Created: {latest_name} → {os.path.basename(latest_file)}")
+            except Exception as e:
+                print(f"   ⚠️  Could not create {latest_name}: {e}")
+
 print("\n" + "="*60)
 print("✅ CTI data collection complete!")
 print("="*60)
@@ -170,4 +241,8 @@ print(f"   • Pulses: {len(pulses_df)}")
 print(f"   • Indicators: {len(indicators_df)}")
 print(f"   • Indicator types: {len(indicators_df['indicator_type'].unique()) if len(indicators_df) > 0 else 0}")
 print(f"   • TLP levels: {', '.join(pulses_df['tlp'].unique())}")
+
+# Create latest file links for easy access
+create_latest_links()
+
 print("="*60)
