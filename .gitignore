@@ -1,0 +1,47 @@
+﻿# Model files (too large for Git)
+models/*.pkl
+data/cic_processed/
+*.npy
+
+# Output files
+out/
+*.csv
+*.json
+
+# Virtual environment
+cti/venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
