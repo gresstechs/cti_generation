@@ -3,3 +3,5 @@ stix2
 taxii2-client
 pandas
 matplotlib
+scikit-learn>=1.3.0
+joblib>=1.3.0
