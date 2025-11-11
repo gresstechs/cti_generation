@@ -1,0 +1,7 @@
+{
+  "model_name": "AndMal2020-Detector-v1",
+  "version": "1.0.0",
+  "dataset": "CCCS-CIC-AndMal-2020",
+  "num_features": 9605,
+  "trained_at": "2025-11-10T16:29:05.637688"
+}
