@@ -5,6 +5,12 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 import joblib
 import time
+import os
+import sys
+
+# Import model paths
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+from model_utils import INTRUSION_DETECTOR_PATH, CIC_FEATURE_NAMES_PATH
 
 class IntrusionDetector:
     """CTI-IntrusionDetector-v1 - Network Intrusion Detection Model"""
@@ -94,7 +100,7 @@ class IntrusionDetector:
             
             # Load feature names
             try:
-                feature_names = joblib.load('models/cic_feature_names.pkl')
+                feature_names = joblib.load(CIC_FEATURE_NAMES_PATH)
                 importances = self.model.feature_importances_
                 
                 # Create dataframe and sort
@@ -118,22 +124,23 @@ class IntrusionDetector:
     
     def save_model(self):
         """Save trained model"""
-        import os
-        os.makedirs('models', exist_ok=True)
-        
-        model_path = 'models/intrusion_detector_v1.pkl'
-        
+        # Create model directory if needed
+        model_dir = os.path.dirname(INTRUSION_DETECTOR_PATH)
+        os.makedirs(model_dir, exist_ok=True)
+
         model_data = {
             'model': self.model,
             'model_name': self.model_name,
             'version': self.version
         }
-        
-        joblib.dump(model_data, model_path)
-        print(f"\n💾 Model saved: {model_path}")
+
+        joblib.dump(model_data, INTRUSION_DETECTOR_PATH)
+        print(f"\n💾 Model saved: {INTRUSION_DETECTOR_PATH}")
     
-    def load_model(self, path='models/intrusion_detector_v1.pkl'):
+    def load_model(self, path=None):
         """Load trained model"""
+        if path is None:
+            path = INTRUSION_DETECTOR_PATH
         model_data = joblib.load(path)
         self.model = model_data['model']
         self.model_name = model_data['model_name']
@@ -173,7 +180,7 @@ if __name__ == "__main__":
         print(f"   Precision: {metrics['precision']*100:.2f}%")
         print(f"   Recall: {metrics['recall']*100:.2f}%")
         print(f"   F1-Score: {metrics['f1_score']:.4f}")
-        print(f"\n💾 Saved to: models/intrusion_detector_v1.pkl")
+        print(f"\n💾 Saved to: {INTRUSION_DETECTOR_PATH}")
         print(f"\n🚀 Ready for deployment!")
         print("="*70)
         

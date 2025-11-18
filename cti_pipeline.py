@@ -10,6 +10,10 @@ import numpy as np
 import json
 from datetime import datetime
 
+# Add cti directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cti'))
+from model_utils import ANDMAL_DETECTOR_PATH, REALTIME_RECOMMENDER_PATH
+
 print("="*70)
 print("COMPLETE CTI PIPELINE")
 print("="*70)
@@ -42,11 +46,9 @@ print("\n🔍 STEP 2: Running Malware Detection...")
 try:
     # Try to load AndMal detector
     import joblib
-    
-    andmal_model_path = 'models/andmal2020_detector_v1.pkl'
-    
-    if os.path.exists(andmal_model_path):
-        print(f"   Loading AndMal detector from {andmal_model_path}...")
+
+    if os.path.exists(ANDMAL_DETECTOR_PATH):
+        print(f"   Loading AndMal detector from {ANDMAL_DETECTOR_PATH}...")
         
         # This is simplified - in production you'd need to extract proper features
         # For now, we'll use heuristics based on OTX data
@@ -76,7 +78,7 @@ try:
         print(f"      High risk (>70%): {len(otx_df[otx_df['malware_probability'] > 0.7])}")
         
     else:
-        print(f"   ⚠️  AndMal model not found at {andmal_model_path}")
+        print(f"   ⚠️  AndMal model not found at {ANDMAL_DETECTOR_PATH}")
         print("   Using default malware probability (50%)")
         otx_df['malware_probability'] = 0.5
         otx_df['confidence'] = 50
@@ -116,9 +118,8 @@ except Exception as e:
 recommender = RealTimeMLRecommender()
 
 # Load or train model
-model_path = 'models/realtime_ml_recommender.pkl'
-if os.path.exists(model_path):
-    recommender.load_model(model_path)
+if os.path.exists(REALTIME_RECOMMENDER_PATH):
+    recommender.load_model(REALTIME_RECOMMENDER_PATH)
 else:
     print("   Training new ML model...")
     recommender.train_from_synthetic_data(n_samples=1000)

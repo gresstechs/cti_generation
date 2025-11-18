@@ -11,7 +11,12 @@ from sklearn.preprocessing import LabelEncoder, StandardScaler
 import joblib
 import json
 import os
+import sys
 from datetime import datetime
+
+# Import model paths
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cti'))
+from cti.model_utils import REALTIME_RECOMMENDER_PATH
 
 class RealTimeMLRecommender:
     """ML-based action recommendation system for OTX threats"""
@@ -397,15 +402,18 @@ class RealTimeMLRecommender:
         joblib.dump(model_data, f'{output_dir}/realtime_ml_recommender.pkl')
         print(f"\n💾 Model saved: {output_dir}/realtime_ml_recommender.pkl")
     
-    def load_model(self, model_path='models/realtime_ml_recommender.pkl'):
+    def load_model(self, model_path=None):
         """Load trained model"""
+        if model_path is None:
+            model_path = REALTIME_RECOMMENDER_PATH
+
         if not os.path.exists(model_path):
             print(f"⚠️  Model not found at {model_path}")
             print("   Training new model...")
             self.train_from_synthetic_data()
             self.save_model()
             return
-        
+
         model_data = joblib.load(model_path)
         self.action_model = model_data['action_model']
         self.action_encoder = model_data['action_encoder']
@@ -439,9 +447,8 @@ def process_otx_data_with_ml_recommendations():
     recommender = RealTimeMLRecommender()
     
     # Load or train model
-    model_path = 'models/realtime_ml_recommender.pkl'
-    if os.path.exists(model_path):
-        recommender.load_model(model_path)
+    if os.path.exists(REALTIME_RECOMMENDER_PATH):
+        recommender.load_model(REALTIME_RECOMMENDER_PATH)
     else:
         print("\n🤖 No existing model found. Training new model...")
         recommender.train_from_synthetic_data(n_samples=1000)

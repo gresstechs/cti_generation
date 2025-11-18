@@ -14,6 +14,9 @@ import os
 import json
 from datetime import datetime
 
+# Import model paths
+from model_utils import ANDMAL_DETECTOR_PATH, ANDMAL_SCALER_PATH, ANDMAL_FEATURE_NAMES_PATH, ANDMAL_METADATA_PATH
+
 class AndMal2020Detector:
     """Malware Detector trained on CCCS-CIC-AndMal-2020 dataset"""
     
@@ -61,8 +64,8 @@ class AndMal2020Detector:
             print(f"   ✅ y_test:  {y_test.shape}")
             
             # Load scaler and feature names
-            self.scaler = joblib.load('models/andmal_scaler.pkl')
-            self.feature_names = joblib.load('models/andmal_feature_names.pkl')
+            self.scaler = joblib.load(ANDMAL_SCALER_PATH)
+            self.feature_names = joblib.load(ANDMAL_FEATURE_NAMES_PATH)
             
             print(f"   ✅ Scaler loaded")
             print(f"   ✅ Feature names loaded ({len(self.feature_names)} features)")
@@ -167,10 +170,10 @@ class AndMal2020Detector:
     
     def save_model(self):
         """Save trained model and metadata"""
-        os.makedirs('models', exist_ok=True)
-        
-        model_path = 'models/andmal2020_detector_v1.pkl'
-        
+        # Create directory if needed
+        model_dir = os.path.dirname(ANDMAL_DETECTOR_PATH)
+        os.makedirs(model_dir, exist_ok=True)
+
         model_data = {
             'model': self.model,
             'scaler': self.scaler,
@@ -180,10 +183,10 @@ class AndMal2020Detector:
             'feature_names': self.feature_names,
             'trained_at': datetime.now().isoformat()
         }
-        
-        joblib.dump(model_data, model_path)
-        print(f"\n💾 Model saved: {model_path}")
-        
+
+        joblib.dump(model_data, ANDMAL_DETECTOR_PATH)
+        print(f"\n💾 Model saved: {ANDMAL_DETECTOR_PATH}")
+
         metadata = {
             'model_name': self.model_name,
             'version': self.version,
@@ -191,11 +194,11 @@ class AndMal2020Detector:
             'num_features': len(self.feature_names) if self.feature_names else 0,
             'trained_at': datetime.now().isoformat()
         }
-        
-        with open('models/andmal2020_metadata.json', 'w') as f:
+
+        with open(ANDMAL_METADATA_PATH, 'w') as f:
             json.dump(metadata, f, indent=2)
-        
-        print(f"💾 Metadata saved: models/andmal2020_metadata.json")
+
+        print(f"💾 Metadata saved: {ANDMAL_METADATA_PATH}")
 
 if __name__ == "__main__":
     print("="*70)

@@ -12,12 +12,15 @@ import os
 import sys
 from datetime import datetime
 
+# Import model paths
+from model_utils import ANDMAL_DETECTOR_PATH
+
 print("="*70)
 print("OTX THREAT PREDICTION WITH ANDMAL-2020 MODEL")
 print("="*70)
 
 # Check if model exists
-if not os.path.exists('models/andmal2020_detector_v1.pkl'):
+if not os.path.exists(ANDMAL_DETECTOR_PATH):
     print("\n❌ Model not found!")
     print("   Train the model first:")
     print("   1. python prepare_andmal_data.py")
@@ -33,7 +36,7 @@ if not os.path.exists('out/cti_ml_features_latest.csv'):
 
 # Load model
 print("\n📂 Loading trained AndMal-2020 model...")
-model_data = joblib.load('models/andmal2020_detector_v1.pkl')
+model_data = joblib.load(ANDMAL_DETECTOR_PATH)
 model = model_data['model']
 scaler = model_data['scaler']
 feature_names = model_data['feature_names']

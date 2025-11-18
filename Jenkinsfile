@@ -7,10 +7,17 @@ pipeline {
   }
   
   stages {
-    stage('Checkout'){ 
-      steps { 
-        checkout scm 
-      } 
+    stage('Clean Workspace') {
+      steps {
+        deleteDir()
+        echo "✅ Workspace cleaned"
+      }
+    }
+
+    stage('Checkout'){
+      steps {
+        checkout scm
+      }
     }
     
     stage('Setup venv'){

@@ -5,6 +5,10 @@ import os
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import joblib
+import sys
+
+# Import model paths
+from model_utils import CIC_SCALER_PATH, CIC_FEATURE_NAMES_PATH
 
 def load_and_combine_data():
     """Load all CIC dataset files"""
@@ -182,12 +186,14 @@ def save_processed_data(X_train, X_test, y_train, y_test, scaler, feature_names)
     print(f"   ✅ y_test:  {y_test.shape} saved")
     
     # Save scaler and feature names
-    os.makedirs('models', exist_ok=True)
-    joblib.dump(scaler, 'models/cic_scaler.pkl')
-    joblib.dump(feature_names, 'models/cic_feature_names.pkl')
-    
-    print(f"   ✅ Scaler saved to models/cic_scaler.pkl")
-    print(f"   ✅ Feature names saved to models/cic_feature_names.pkl")
+    model_dir = os.path.dirname(CIC_SCALER_PATH)
+    os.makedirs(model_dir, exist_ok=True)
+
+    joblib.dump(scaler, CIC_SCALER_PATH)
+    joblib.dump(feature_names, CIC_FEATURE_NAMES_PATH)
+
+    print(f"   ✅ Scaler saved to {CIC_SCALER_PATH}")
+    print(f"   ✅ Feature names saved to {CIC_FEATURE_NAMES_PATH}")
     
     # Save summary
     summary = {

@@ -1,5 +1,5 @@
 ﻿# Model files (too large for Git)
-#models/*.pkl
+models/*.pkl
 data/cic_processed/
 *.npy
 

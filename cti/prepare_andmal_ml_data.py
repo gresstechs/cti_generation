@@ -14,6 +14,9 @@ import joblib
 from datetime import datetime
 import sys
 
+# Import model paths
+from model_utils import ANDMAL_SCALER_PATH, ANDMAL_FEATURE_NAMES_PATH
+
 def load_andmal2020_csvs_sampled(benign_dir='cti/data/CCCS-CIC-Benign-CSVs', 
                                   malicious_dir='cti/data/CCCS-CIC-Malicious-CSVs',
                                   sample_size_per_file=5000):
@@ -254,9 +257,12 @@ def save_processed_data(X_train, X_test, y_train, y_test, scaler, feature_names)
     print(f"   ✅ X_train: {X_train.shape}")
     print(f"   ✅ X_test:  {X_test.shape}")
     
-    os.makedirs('models', exist_ok=True)
-    joblib.dump(scaler, 'models/andmal_scaler.pkl')
-    joblib.dump(feature_names, 'models/andmal_feature_names.pkl')
+    # Create model directory if needed
+    model_dir = os.path.dirname(ANDMAL_SCALER_PATH)
+    os.makedirs(model_dir, exist_ok=True)
+
+    joblib.dump(scaler, ANDMAL_SCALER_PATH)
+    joblib.dump(feature_names, ANDMAL_FEATURE_NAMES_PATH)
     
     print(f"   ✅ Scaler saved")
     print(f"   ✅ Features saved ({len(feature_names)} features)")
@@ -329,7 +335,7 @@ if __name__ == "__main__":
         
         print(f"\n📁 Output:")
         print(f"   cti/data/andmal_processed/")
-        print(f"   models/andmal_scaler.pkl")
+        print(f"   {ANDMAL_SCALER_PATH}")
         
         print(f"\n🚀 Next Step:")
         print(f"   python cti/train_andmal_detector_fixed.py")

@@ -2,8 +2,13 @@
 import numpy as np
 import joblib
 import sys
-sys.path.append('cti/ml_models')
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'ml_models'))
+sys.path.insert(0, os.path.dirname(__file__))
+
 from intrusion_detector import IntrusionDetector
+from model_utils import INTRUSION_DETECTOR_PATH
 
 print("="*70)
 print("TESTING CTI INTRUSION DETECTOR")
@@ -12,7 +17,7 @@ print("="*70)
 # Load model
 print("\n📂 Loading trained model...")
 detector = IntrusionDetector()
-detector.load_model('models/intrusion_detector_v1.pkl')
+detector.load_model(INTRUSION_DETECTOR_PATH)
 
 # Load test data
 print("📂 Loading test data...")
