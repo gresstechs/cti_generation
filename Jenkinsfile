@@ -280,11 +280,16 @@ pipeline {
         if (fileExists('out/cti_pipeline_summary.json')) {
           echo ""
           echo "📊 PIPELINE SUMMARY:"
-          def summary = readJSON file: 'out/cti_pipeline_summary.json'
-          echo "   Total threats: ${summary.statistics.total_threats}"
-          echo "   Critical: ${summary.statistics.critical_threats}"
-          echo "   High: ${summary.statistics.high_threats}"
-          echo "   Total recommendations: ${summary.statistics.total_recommendations}"
+          try {
+            def summaryText = readFile(file: 'out/cti_pipeline_summary.json')
+            def summary = new groovy.json.JsonSlurper().parseText(summaryText)
+            echo "   Total threats: ${summary.statistics.total_threats}"
+            echo "   Critical: ${summary.statistics.critical_threats}"
+            echo "   High: ${summary.statistics.high_threats}"
+            echo "   Total recommendations: ${summary.statistics.total_recommendations}"
+          } catch (Exception e) {
+            echo "   (Summary file exists but could not be parsed: ${e.message})"
+          }
         }
       }
     }
