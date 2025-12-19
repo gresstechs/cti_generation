@@ -180,7 +180,8 @@ pipeline {
 
             # Create sample classified_threats.csv for first run
             echo "timestamp,threat_id,severity,confidence,classification" > classified_threats.csv
-            echo "$(date +%Y-%m-%d\ %H:%M:%S),SAMPLE001,MEDIUM,0.5,Suspicious" >> classified_threats.csv
+            SAMPLE_TIME=$(date "+%Y-%m-%d %H:%M:%S")
+            echo "${SAMPLE_TIME},SAMPLE001,MEDIUM,0.5,Suspicious" >> classified_threats.csv
 
             python calculate_mttr.py
             echo "✅ Sample MTTR calculated. Real data will accumulate over time."
