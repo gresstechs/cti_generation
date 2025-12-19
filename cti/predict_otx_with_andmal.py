@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Predict OTX Threats Using AndMal-2020 Trained Model
-Analyzes AlienVault OTX threat intelligence using real malware detector
+Predict OTX Threat Levels Using Trained ML Model
+Analyzes AlienVault OTX threat intelligence using OTX-trained classifier.
+Falls back to heuristics if model not available.
 """
 
 import pandas as pd
 import numpy as np
 import joblib
 import json
-import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,21 +17,31 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 OUT_DIR = PROJECT_ROOT / "out"
+MODELS_DIR = PROJECT_ROOT / "models"
 
-# Import model paths
-from model_utils import ANDMAL_DETECTOR_PATH
+# Model paths
+OTX_MODEL_PATH = MODELS_DIR / "otx_threat_classifier_v1.pkl"
+
+# Feature columns (must match training)
+FEATURE_COLUMNS = [
+    'indicator_count',
+    'tlp_level',
+    'has_adversary',
+    'has_malware',
+    'tag_count',
+    'reference_count',
+    'attack_ids_count',
+    'pulse_age_hours',
+    'ip_count',
+    'domain_count',
+    'hash_count',
+    'url_count',
+    'file_count'
+]
 
 print("="*70)
-print("OTX THREAT PREDICTION WITH ANDMAL-2020 MODEL")
+print("OTX THREAT PREDICTION WITH ML MODEL")
 print("="*70)
-
-# Check if model exists
-if not os.path.exists(ANDMAL_DETECTOR_PATH):
-    print("\n❌ Model not found!")
-    print("   Train the model first:")
-    print("   1. python prepare_andmal_data.py")
-    print("   2. python train_andmal_detector.py")
-    sys.exit(1)
 
 # Check if OTX features exist (use absolute path)
 OTX_FEATURES_FILE = OUT_DIR / "cti_ml_features_latest.csv"
@@ -41,17 +51,6 @@ if not OTX_FEATURES_FILE.exists():
     print("   Fetch OTX data first:")
     print("   python cti/otx_fetch.py")
     sys.exit(1)
-
-# Load model
-print("\n📂 Loading trained AndMal-2020 model...")
-model_data = joblib.load(ANDMAL_DETECTOR_PATH)
-model = model_data['model']
-scaler = model_data['scaler']
-feature_names = model_data['feature_names']
-
-print(f"   ✅ Model: {model_data['model_name']} v{model_data['version']}")
-print(f"   ✅ Dataset: {model_data['dataset']}")
-print(f"   ✅ Features: {len(feature_names)}")
 
 # Load OTX features
 print("\n📂 Loading OTX threat features...")
@@ -63,176 +62,225 @@ print(f"   Total pulses: {len(otx_features)}")
 if 'tlp' in otx_features.columns:
     print(f"   TLP distribution: {otx_features['tlp'].value_counts().to_dict()}")
 if 'has_adversary' in otx_features.columns:
-    print(f"   With adversary: {otx_features['has_adversary'].sum()}")
+    print(f"   With adversary: {int(otx_features['has_adversary'].sum())}")
 if 'has_malware' in otx_features.columns:
-    print(f"   With malware: {otx_features['has_malware'].sum()}")
+    print(f"   With malware: {int(otx_features['has_malware'].sum())}")
 
-# Map OTX features to AndMal model features
-print("\n🔧 Mapping OTX features to model input...")
+# Check if OTX model exists
+USE_ML_MODEL = OTX_MODEL_PATH.exists()
 
-def extract_threat_features(otx_row):
-    """
-    Extract features from OTX that align with malware detection
-    
-    Since AndMal-2020 has hundreds of behavioral features (API calls, memory, etc.)
-    and OTX has threat intelligence features (IOC counts, TLP, adversary),
-    we create a feature mapping that represents threat characteristics
-    """
-    features = {}
-    
-    # Basic threat indicators
-    features['indicator_count'] = otx_row.get('indicator_count', 0)
-    features['ip_count'] = otx_row.get('ip_count', 0)
-    features['domain_count'] = otx_row.get('domain_count', 0)
-    features['hash_count'] = otx_row.get('hash_count', 0)
-    features['url_count'] = otx_row.get('url_count', 0)
-    features['file_count'] = otx_row.get('file_count', 0)
-    
-    # TLP encoding
-    tlp_mapping = {'white': 0, 'green': 1, 'amber': 2, 'red': 3}
-    features['tlp_level'] = tlp_mapping.get(otx_row.get('tlp', 'white'), 0)
-    
-    # Binary indicators
-    features['has_adversary'] = int(otx_row.get('has_adversary', 0))
-    features['has_malware'] = int(otx_row.get('has_malware', 0))
-    features['has_attack_ids'] = int(otx_row.get('attack_ids_count', 0) > 0)
-    
-    # Diversity and activity metrics
-    features['indicator_diversity'] = sum([
-        features['ip_count'] > 0,
-        features['domain_count'] > 0,
-        features['hash_count'] > 0,
-        features['url_count'] > 0,
-        features['file_count'] > 0
+if USE_ML_MODEL:
+    print("\n📂 Loading trained OTX threat model...")
+    try:
+        model_data = joblib.load(OTX_MODEL_PATH)
+        models = model_data['models']
+        scalers = model_data['scalers']
+        feature_names = model_data['feature_names']
+
+        print(f"   ✅ Model: {model_data['model_name']} v{model_data['version']}")
+        print(f"   ✅ Dataset: {model_data['dataset']}")
+        print(f"   ✅ Features: {len(feature_names)}")
+        print(f"   ✅ Trained: {model_data['trained_date'][:10]}")
+
+        # Show model metrics
+        if 'metrics' in model_data:
+            print(f"\n📈 Model Performance:")
+            for target, m in model_data['metrics'].items():
+                print(f"      {target}: accuracy={m['accuracy']:.4f}")
+
+    except Exception as e:
+        print(f"   ⚠️  Error loading model: {e}")
+        print("   Falling back to heuristic scoring")
+        USE_ML_MODEL = False
+else:
+    print("\n⚠️  OTX ML model not found")
+    print(f"   Expected: {OTX_MODEL_PATH}")
+    print("   Train the model first: python cti/train_otx_threat_model.py")
+    print("   Using heuristic scoring instead")
+
+
+def predict_with_ml(threat_features):
+    """Use trained ML model for prediction"""
+    # Prepare feature vector
+    X = np.array([[
+        threat_features.get(col, 0) for col in FEATURE_COLUMNS
+    ]])
+
+    # Get predictions from all models
+    threat_level_scaled = scalers['threat_level'].transform(X)
+    threat_level_pred = models['threat_level'].predict(threat_level_scaled)[0]
+    threat_level_proba = models['threat_level'].predict_proba(threat_level_scaled)[0]
+
+    action_scaled = scalers['requires_action'].transform(X)
+    requires_action_pred = models['requires_action'].predict(action_scaled)[0]
+    requires_action_proba = models['requires_action'].predict_proba(action_scaled)[0]
+
+    priority_scaled = scalers['is_high_priority'].transform(X)
+    is_high_priority_pred = models['is_high_priority'].predict(priority_scaled)[0]
+    priority_proba = models['is_high_priority'].predict_proba(priority_scaled)[0]
+
+    # Calculate overall malware probability
+    # Weighted combination of model predictions
+    malware_prob = (
+        threat_level_proba[min(3, len(threat_level_proba)-1)] * 0.4 +  # P(threat_level=3)
+        (threat_level_proba[2] if len(threat_level_proba) > 2 else 0) * 0.2 +  # P(threat_level=2)
+        requires_action_proba[1] * 0.2 +  # P(requires_action=1)
+        priority_proba[1] * 0.2  # P(is_high_priority=1)
+    )
+
+    # Determine risk level based on threat_level prediction
+    risk_levels = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']
+    risk_level = risk_levels[min(threat_level_pred, 3)]
+
+    # Confidence is the max probability from threat level prediction
+    confidence = max(threat_level_proba) * 100
+
+    return {
+        'malware_probability': float(malware_prob),
+        'confidence': float(confidence),
+        'risk_level': risk_level,
+        'threat_level_pred': int(threat_level_pred),
+        'requires_action': int(requires_action_pred),
+        'is_high_priority': int(is_high_priority_pred),
+        'method': 'ML'
+    }
+
+
+def predict_with_heuristics(threat_features):
+    """Fallback heuristic-based prediction"""
+    malware_prob = 0.0
+
+    # Base probability from TLP
+    tlp = threat_features.get('tlp', 'white')
+    tlp_probs = {'white': 0.1, 'green': 0.3, 'amber': 0.6, 'red': 0.8}
+    malware_prob = tlp_probs.get(tlp, 0.1)
+
+    # Boost if malware families present
+    if threat_features.get('has_malware', 0):
+        malware_prob = min(1.0, malware_prob + 0.3)
+
+    # Boost if known adversary
+    if threat_features.get('has_adversary', 0):
+        malware_prob = min(1.0, malware_prob + 0.2)
+
+    # Boost for high indicator counts
+    indicator_count = threat_features.get('indicator_count', 0)
+    if indicator_count > 50:
+        malware_prob = min(1.0, malware_prob + 0.15)
+
+    # Boost for file-based indicators (hashes)
+    hash_count = threat_features.get('hash_count', 0)
+    if hash_count > 10:
+        malware_prob = min(1.0, malware_prob + 0.15)
+
+    # Boost for multi-vector attacks
+    indicator_diversity = sum([
+        threat_features.get('ip_count', 0) > 0,
+        threat_features.get('domain_count', 0) > 0,
+        threat_features.get('hash_count', 0) > 0,
+        threat_features.get('url_count', 0) > 0,
+        threat_features.get('file_count', 0) > 0
     ])
-    
-    features['tag_count'] = otx_row.get('tag_count', 0)
-    features['reference_count'] = otx_row.get('reference_count', 0)
-    features['pulse_age_hours'] = otx_row.get('pulse_age_hours', 0)
-    
-    # Threat intensity scores
-    features['threat_intensity'] = (
-        features['indicator_count'] * 0.3 +
-        features['has_malware'] * 50 +
-        features['has_adversary'] * 30 +
-        features['tlp_level'] * 20
-    )
-    
-    features['network_activity_score'] = (
-        features['ip_count'] + 
-        features['domain_count'] * 2 + 
-        features['url_count'] * 1.5
-    )
-    
-    features['file_based_threat_score'] = (
-        features['hash_count'] * 3 +
-        features['file_count'] * 2
-    )
-    
-    return features
+    if indicator_diversity >= 4:
+        malware_prob = min(1.0, malware_prob + 0.1)
 
-# Extract features for all OTX threats
-print("   Creating feature vectors...")
-threat_features_list = []
+    # Determine risk level
+    if malware_prob >= 0.9:
+        risk_level = 'CRITICAL'
+        threat_level = 3
+    elif malware_prob >= 0.7:
+        risk_level = 'HIGH'
+        threat_level = 2
+    elif malware_prob >= 0.5:
+        risk_level = 'MEDIUM'
+        threat_level = 1
+    else:
+        risk_level = 'LOW'
+        threat_level = 0
 
-for idx, threat in otx_features.iterrows():
-    features = extract_threat_features(threat)
-    threat_features_list.append(features)
+    return {
+        'malware_probability': float(malware_prob),
+        'confidence': float(malware_prob * 100),
+        'risk_level': risk_level,
+        'threat_level_pred': threat_level,
+        'requires_action': 1 if threat_level >= 2 else 0,
+        'is_high_priority': 1 if risk_level == 'CRITICAL' else 0,
+        'method': 'Heuristic'
+    }
 
-threat_features_df = pd.DataFrame(threat_features_list)
 
-# Note: The AndMal model expects specific Android malware features
-# We'll use a simplified approach: use OTX features as a proxy
-# For production, you'd want to retrain on OTX-style features
-
-print(f"   ✅ Extracted {len(threat_features_df)} feature vectors")
-print(f"   ✅ Features per threat: {len(threat_features_df.columns)}")
-
-# Since AndMal model expects many more features, we'll use a heuristic approach
-# Create a malware probability based on OTX threat characteristics
-
-print("\n🔮 Calculating malware probabilities...")
+# Process all threats
+print(f"\n🔮 Calculating threat predictions using {'ML model' if USE_ML_MODEL else 'heuristics'}...")
 
 results = []
 
-for idx, (threat_row, features_row) in enumerate(zip(otx_features.iterrows(), threat_features_list)):
-    threat = threat_row[1]
-    features = features_row
-    
-    # Calculate malware probability using threat intelligence signals
-    malware_prob = 0.0
-    
-    # Base probability from TLP
-    tlp_probs = {'white': 0.1, 'green': 0.3, 'amber': 0.6, 'red': 0.8}
-    malware_prob = tlp_probs.get(threat.get('tlp', 'white'), 0.1)
-    
-    # Boost if malware families present
-    if features['has_malware']:
-        malware_prob = min(1.0, malware_prob + 0.3)
-    
-    # Boost if known adversary
-    if features['has_adversary']:
-        malware_prob = min(1.0, malware_prob + 0.2)
-    
-    # Boost for high indicator counts
-    if features['indicator_count'] > 50:
-        malware_prob = min(1.0, malware_prob + 0.15)
-    
-    # Boost for file-based indicators (hashes)
-    if features['hash_count'] > 10:
-        malware_prob = min(1.0, malware_prob + 0.15)
-    
-    # Boost for multi-vector attacks
-    if features['indicator_diversity'] >= 4:
-        malware_prob = min(1.0, malware_prob + 0.1)
-    
-    # Determine risk level and priority
-    if malware_prob >= 0.9:
-        risk_level = 'CRITICAL'
+for idx, threat in otx_features.iterrows():
+    # Prepare threat features
+    threat_features = {
+        'indicator_count': threat.get('indicator_count', 0),
+        'tlp_level': threat.get('tlp_level', 0),
+        'tlp': threat.get('tlp', 'white'),
+        'has_adversary': threat.get('has_adversary', 0),
+        'has_malware': threat.get('has_malware', 0),
+        'tag_count': threat.get('tag_count', 0),
+        'reference_count': threat.get('reference_count', 0),
+        'attack_ids_count': threat.get('attack_ids_count', 0),
+        'pulse_age_hours': threat.get('pulse_age_hours', 0),
+        'ip_count': threat.get('ip_count', 0),
+        'domain_count': threat.get('domain_count', 0),
+        'hash_count': threat.get('hash_count', 0),
+        'url_count': threat.get('url_count', 0),
+        'file_count': threat.get('file_count', 0)
+    }
+
+    # Get prediction
+    if USE_ML_MODEL:
+        prediction = predict_with_ml(threat_features)
+    else:
+        prediction = predict_with_heuristics(threat_features)
+
+    # Determine priority and action
+    if prediction['risk_level'] == 'CRITICAL':
         priority = 'CRITICAL'
         action = 'IMMEDIATE_RESPONSE'
-    elif malware_prob >= 0.7:
-        risk_level = 'HIGH'
+    elif prediction['risk_level'] == 'HIGH':
         priority = 'HIGH'
         action = 'INVESTIGATE_URGENTLY'
-    elif malware_prob >= 0.5:
-        risk_level = 'MEDIUM'
+    elif prediction['risk_level'] == 'MEDIUM':
         priority = 'MEDIUM'
         action = 'INVESTIGATE'
     else:
-        risk_level = 'LOW'
         priority = 'LOW'
         action = 'MONITOR'
-    
+
     # Build risk factors explanation
     factors = []
-    if features['has_malware']:
+    if threat_features['has_malware']:
         factors.append("Known malware families")
-    if features['has_adversary']:
+    if threat_features['has_adversary']:
         factors.append("Known threat actor")
-    if threat.get('tlp') in ['red', 'amber']:
-        factors.append(f"High TLP ({threat.get('tlp')})")
-    if features['indicator_count'] > 50:
-        factors.append(f"High IOC count ({features['indicator_count']})")
-    if features['hash_count'] > 10:
-        factors.append(f"Multiple file hashes ({features['hash_count']})")
-    if features['indicator_diversity'] >= 4:
-        factors.append("Multi-vector attack")
-    
+    if threat_features['tlp'] in ['red', 'amber']:
+        factors.append(f"High TLP ({threat_features['tlp']})")
+    if threat_features['indicator_count'] > 50:
+        factors.append(f"High IOC count ({threat_features['indicator_count']})")
+    if threat_features['hash_count'] > 10:
+        factors.append(f"Multiple file hashes ({threat_features['hash_count']})")
+
     results.append({
         'pulse_id': threat.get('pulse_id'),
         'pulse_name': threat.get('pulse_name'),
         'tlp': threat.get('tlp'),
         'adversary': threat.get('adversary', ''),
         'malware_families': threat.get('malware_families', ''),
-        'indicator_count': int(features['indicator_count']),
-        'malware_probability': float(malware_prob),
-        'confidence': float(malware_prob * 100),
-        'risk_level': risk_level,
+        'indicator_count': int(threat_features['indicator_count']),
+        'malware_probability': prediction['malware_probability'],
+        'confidence': prediction['confidence'],
+        'risk_level': prediction['risk_level'],
         'priority': priority,
         'recommended_action': action,
         'risk_factors': '; '.join(factors) if factors else 'Low threat indicators',
-        'model_version': model_data['model_name'],
+        'prediction_method': prediction['method'],
+        'model_version': model_data['model_name'] if USE_ML_MODEL else 'Heuristic v1.0',
         'prediction_timestamp': datetime.utcnow().isoformat()
     })
 
@@ -249,9 +297,10 @@ print(f"\n✅ Saved predictions to: {output_csv}")
 # Create summary
 summary = {
     'timestamp': datetime.utcnow().isoformat(),
-    'model': model_data['model_name'],
-    'model_version': model_data['version'],
-    'dataset': model_data['dataset'],
+    'model': model_data['model_name'] if USE_ML_MODEL else 'Heuristic Scorer',
+    'model_version': model_data.get('version', '1.0') if USE_ML_MODEL else '1.0',
+    'prediction_method': 'ML' if USE_ML_MODEL else 'Heuristic',
+    'dataset': 'OTX Threat Intelligence',
     'total_threats': len(results_df),
     'priority_distribution': results_df['priority'].value_counts().to_dict(),
     'risk_level_distribution': results_df['risk_level'].value_counts().to_dict(),
@@ -267,6 +316,7 @@ print(f"✅ Saved summary to: {summary_json}")
 
 # Display results
 print(f"\n📊 Prediction Summary:")
+print(f"   Method: {summary['prediction_method']}")
 print(f"   Total threats: {summary['total_threats']}")
 print(f"   High risk (≥70%): {summary['high_risk_threats']}")
 print(f"   Critical threats: {summary['critical_threats']}")
@@ -290,7 +340,7 @@ for idx, threat in results_df.head(10).iterrows():
         color = '🟡'
     else:
         color = '🟢'
-    
+
     print(f"\n{color} {threat['pulse_name'][:65]}")
     print(f"   Malware Probability: {threat['malware_probability']:.1%}")
     print(f"   Priority: {threat['priority']} | Action: {threat['recommended_action']}")
@@ -308,7 +358,7 @@ if len(critical) > 0:
     print(f"\n{'='*70}")
     print(f"🚨 CRITICAL THREATS: {len(critical)}")
     print(f"{'='*70}")
-    
+
     for _, threat in critical.iterrows():
         print(f"\n🔴 {threat['pulse_name']}")
         print(f"   Probability: {threat['malware_probability']:.1%}")
@@ -321,5 +371,9 @@ print(f"\n{'='*70}")
 print(f"💾 Output Files:")
 print(f"   • {output_csv}")
 print(f"   • {summary_json}")
-print(f"\n📊 Model: {model_data['model_name']} (trained on {model_data['dataset']})")
+print(f"\n📊 Prediction Method: {summary['prediction_method']}")
+if USE_ML_MODEL:
+    print(f"   Model: {model_data['model_name']} v{model_data['version']}")
+else:
+    print("   ⚠️  Train model for better accuracy: python cti/train_otx_threat_model.py")
 print("="*70)

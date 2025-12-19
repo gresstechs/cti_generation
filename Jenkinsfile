@@ -51,30 +51,35 @@ pipeline {
       }
     }
     
-    stage('ML Malware Detection'){
+    stage('Train OTX Threat Model'){
       steps {
         sh '''
           echo "=========================================="
-          echo "Running ML Malware Detection..."
+          echo "Training OTX Threat Classification Model..."
           echo "=========================================="
-          
+
           . .venv/bin/activate
-          
-          # Check if AndMal model exists (check all possible locations from model_utils.py)
-          if [ -f "cti/venv/models/andmal2020_detector_v1.pkl" ] || [ -f "cti/models/andmal2020_detector_v1.pkl" ] || [ -f "models/andmal2020_detector_v1.pkl" ]; then
-            echo "✅ AndMal model found"
-            echo "🔍 Running malware detection on OTX threats..."
 
-            # Run detection (if you have the script)
-            # python cti/detect_otx_malware.py
-
-            echo "⚠️  Note: Add malware detection script here"
-            echo "   For now, pipeline continues with heuristic scoring"
+          # Check if OTX model exists
+          if [ -f "models/otx_threat_classifier_v1.pkl" ]; then
+            echo "✅ OTX threat model already exists"
+            echo "   Skipping training (delete model to retrain)"
           else
-            echo "⚠️  AndMal model not found"
-            echo "   Expected locations: cti/venv/models/, cti/models/, or models/"
-            echo "   Train model first: python cti/train_andmal_final.py"
-            echo "   Pipeline will use heuristic scoring instead"
+            echo "🔧 Training new OTX threat model..."
+            echo "   Using OTX data for training"
+
+            # Train the model
+            python cti/train_otx_threat_model.py
+
+            echo ""
+            echo "✅ OTX threat model trained successfully"
+          fi
+
+          # Show model info
+          if [ -f "models/otx_threat_classifier_metadata.json" ]; then
+            echo ""
+            echo "📊 Model Info:"
+            cat models/otx_threat_classifier_metadata.json | head -20
           fi
         '''
       }
@@ -121,7 +126,7 @@ pipeline {
 
           . .venv/bin/activate
 
-          # Check if OTX features exist (in parent directory)
+          # Check if OTX features exist
           if [ ! -f "out/cti_ml_features_latest.csv" ]; then
             echo "⚠️  OTX ML features not found"
             echo "   Checking for existing predictions..."
@@ -131,27 +136,29 @@ pipeline {
               echo "   ⚠️  No predictions available. MTTR will use sample data."
             fi
           else
-            # Check if AndMal model exists (check all possible locations from model_utils.py)
-            if [ -f "cti/venv/models/andmal2020_detector_v1.pkl" ] || [ -f "cti/models/andmal2020_detector_v1.pkl" ] || [ -f "models/andmal2020_detector_v1.pkl" ]; then
-              echo "✅ AndMal model found"
-              echo "🔍 Running threat prediction on OTX data..."
+            echo "✅ OTX features found"
 
-              # Run from project root (DON'T cd into cti/)
-              # Script expects to find out/ directory in current path
-              python cti/predict_otx_with_andmal.py
-
-              echo ""
-              echo "✅ Threat predictions generated"
-              ls -lh out/otx_andmal_predictions.csv 2>/dev/null && echo "   ✓ Predictions file ready"
+            # Check which model is available
+            if [ -f "models/otx_threat_classifier_v1.pkl" ]; then
+              echo "✅ OTX ML model found - using trained model"
             else
-              echo "⚠️  AndMal model not found"
-              echo "   Expected locations: cti/venv/models/, cti/models/, or models/"
-              echo "   Checking for existing predictions..."
-              if [ -f "out/otx_andmal_predictions.csv" ]; then
-                echo "   ✓ Using existing predictions file"
-              else
-                echo "   ⚠️  No predictions available. MTTR will use sample data."
-              fi
+              echo "⚠️  OTX ML model not found - using heuristic scoring"
+            fi
+
+            echo "🔍 Running threat prediction on OTX data..."
+
+            # Run prediction (script handles model/heuristic fallback automatically)
+            python cti/predict_otx_with_andmal.py
+
+            echo ""
+            echo "✅ Threat predictions generated"
+            ls -lh out/otx_andmal_predictions.csv 2>/dev/null && echo "   ✓ Predictions file ready"
+
+            # Show prediction method used
+            if [ -f "out/otx_andmal_summary.json" ]; then
+              echo ""
+              echo "📊 Prediction Summary:"
+              cat out/otx_andmal_summary.json | grep -E '"prediction_method"|"total_threats"|"critical_threats"' | head -5
             fi
           fi
         '''

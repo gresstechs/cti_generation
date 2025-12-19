@@ -56,6 +56,10 @@ CIC_FEATURE_NAMES_PATH = os.path.join(MODEL_BASE_PATH, "cic_feature_names.pkl")
 # Real-time ML Recommender Model
 REALTIME_RECOMMENDER_PATH = os.path.join(MODEL_BASE_PATH, "realtime_ml_recommender.pkl")
 
+# OTX Threat Classifier Model (trained on OTX data)
+OTX_THREAT_CLASSIFIER_PATH = os.path.join(MODEL_BASE_PATH, "otx_threat_classifier_v1.pkl")
+OTX_THREAT_CLASSIFIER_METADATA_PATH = os.path.join(MODEL_BASE_PATH, "otx_threat_classifier_metadata.json")
+
 
 def verify_models_exist():
     """
@@ -63,6 +67,7 @@ def verify_models_exist():
     Returns a dictionary with model names and their existence status.
     """
     models = {
+        "OTX Threat Classifier": OTX_THREAT_CLASSIFIER_PATH,
         "AndMal Detector": ANDMAL_DETECTOR_PATH,
         "AndMal Scaler": ANDMAL_SCALER_PATH,
         "AndMal Feature Names": ANDMAL_FEATURE_NAMES_PATH,
