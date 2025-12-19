@@ -11,6 +11,12 @@ import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
+
+# Get project root directory (parent of cti/)
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+OUT_DIR = PROJECT_ROOT / "out"
 
 # Import model paths
 from model_utils import ANDMAL_DETECTOR_PATH
@@ -27,11 +33,13 @@ if not os.path.exists(ANDMAL_DETECTOR_PATH):
     print("   2. python train_andmal_detector.py")
     sys.exit(1)
 
-# Check if OTX features exist
-if not os.path.exists('out/cti_ml_features_latest.csv'):
+# Check if OTX features exist (use absolute path)
+OTX_FEATURES_FILE = OUT_DIR / "cti_ml_features_latest.csv"
+if not OTX_FEATURES_FILE.exists():
     print("\n❌ OTX features not found!")
+    print(f"   Expected: {OTX_FEATURES_FILE}")
     print("   Fetch OTX data first:")
-    print("   python otx_fetch.py")
+    print("   python cti/otx_fetch.py")
     sys.exit(1)
 
 # Load model
@@ -47,7 +55,7 @@ print(f"   ✅ Features: {len(feature_names)}")
 
 # Load OTX features
 print("\n📂 Loading OTX threat features...")
-otx_features = pd.read_csv('out/cti_ml_features_latest.csv')
+otx_features = pd.read_csv(OTX_FEATURES_FILE)
 print(f"   ✅ Loaded {len(otx_features)} threats")
 
 print("\n📊 OTX Threats Summary:")
@@ -233,8 +241,8 @@ results_df = pd.DataFrame(results)
 results_df = results_df.sort_values('malware_probability', ascending=False)
 
 # Save predictions
-os.makedirs('out', exist_ok=True)
-output_csv = 'out/otx_andmal_predictions.csv'
+OUT_DIR.mkdir(parents=True, exist_ok=True)
+output_csv = OUT_DIR / 'otx_andmal_predictions.csv'
 results_df.to_csv(output_csv, index=False)
 print(f"\n✅ Saved predictions to: {output_csv}")
 
@@ -252,7 +260,7 @@ summary = {
     'critical_threats': int(sum(results_df['priority'] == 'CRITICAL'))
 }
 
-summary_json = 'out/otx_andmal_summary.json'
+summary_json = OUT_DIR / 'otx_andmal_summary.json'
 with open(summary_json, 'w') as f:
     json.dump(summary, f, indent=2)
 print(f"✅ Saved summary to: {summary_json}")

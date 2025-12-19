@@ -60,18 +60,19 @@ pipeline {
           
           . .venv/bin/activate
           
-          # Check if AndMal model exists
-          if [ -f "models/andmal2020_detector_v1.pkl" ]; then
+          # Check if AndMal model exists (check all possible locations from model_utils.py)
+          if [ -f "cti/venv/models/andmal2020_detector_v1.pkl" ] || [ -f "cti/models/andmal2020_detector_v1.pkl" ] || [ -f "models/andmal2020_detector_v1.pkl" ]; then
             echo "✅ AndMal model found"
             echo "🔍 Running malware detection on OTX threats..."
-            
+
             # Run detection (if you have the script)
             # python cti/detect_otx_malware.py
-            
+
             echo "⚠️  Note: Add malware detection script here"
             echo "   For now, pipeline continues with heuristic scoring"
           else
-            echo "⚠️  AndMal model not found at models/andmal2020_detector_v1.pkl"
+            echo "⚠️  AndMal model not found"
+            echo "   Expected locations: cti/venv/models/, cti/models/, or models/"
             echo "   Train model first: python cti/train_andmal_final.py"
             echo "   Pipeline will use heuristic scoring instead"
           fi
@@ -120,25 +121,37 @@ pipeline {
 
           . .venv/bin/activate
 
-          # Check if AndMal model exists
-          if [ -f "cti/venv/andmal2020_detector_v1.pkl" ] || [ -f "models/andmal2020_detector_v1.pkl" ]; then
-            echo "✅ AndMal model found"
-            echo "🔍 Running threat prediction on OTX data..."
-
-            cd cti
-            python predict_otx_with_andmal.py
-            cd ..
-
-            echo ""
-            echo "✅ Threat predictions generated"
-            ls -lh out/otx_andmal_predictions.csv 2>/dev/null && echo "   ✓ Predictions file ready"
-          else
-            echo "⚠️  AndMal model not found"
+          # Check if OTX features exist (in parent directory)
+          if [ ! -f "out/cti_ml_features_latest.csv" ]; then
+            echo "⚠️  OTX ML features not found"
             echo "   Checking for existing predictions..."
             if [ -f "out/otx_andmal_predictions.csv" ]; then
               echo "   ✓ Using existing predictions file"
             else
-              echo "   ❌ No predictions available. MTTR will use sample data."
+              echo "   ⚠️  No predictions available. MTTR will use sample data."
+            fi
+          else
+            # Check if AndMal model exists (check all possible locations from model_utils.py)
+            if [ -f "cti/venv/models/andmal2020_detector_v1.pkl" ] || [ -f "cti/models/andmal2020_detector_v1.pkl" ] || [ -f "models/andmal2020_detector_v1.pkl" ]; then
+              echo "✅ AndMal model found"
+              echo "🔍 Running threat prediction on OTX data..."
+
+              # Run from project root (DON'T cd into cti/)
+              # Script expects to find out/ directory in current path
+              python cti/predict_otx_with_andmal.py
+
+              echo ""
+              echo "✅ Threat predictions generated"
+              ls -lh out/otx_andmal_predictions.csv 2>/dev/null && echo "   ✓ Predictions file ready"
+            else
+              echo "⚠️  AndMal model not found"
+              echo "   Expected locations: cti/venv/models/, cti/models/, or models/"
+              echo "   Checking for existing predictions..."
+              if [ -f "out/otx_andmal_predictions.csv" ]; then
+                echo "   ✓ Using existing predictions file"
+              else
+                echo "   ⚠️  No predictions available. MTTR will use sample data."
+              fi
             fi
           fi
         '''
