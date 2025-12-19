@@ -2,6 +2,7 @@
 """
 Real-Time ML Action Recommender - Integrated with OTX Data
 Processes actual OTX pulses and generates ML-based action recommendations
+Uses threat predictions from OTX threat classifier for accurate scoring.
 """
 
 import numpy as np
@@ -13,10 +14,20 @@ import json
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 
-# Import model paths
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'cti'))
-from cti.model_utils import REALTIME_RECOMMENDER_PATH
+# Get project paths
+SCRIPT_DIR = Path(__file__).parent
+PROJECT_ROOT = SCRIPT_DIR.parent
+OUT_DIR = PROJECT_ROOT / "out"
+MODELS_DIR = PROJECT_ROOT / "models"
+
+# Model path
+REALTIME_RECOMMENDER_PATH = MODELS_DIR / "realtime_ml_recommender.pkl"
+
+# Prediction files
+OTX_PREDICTIONS_FILE = OUT_DIR / "otx_andmal_predictions.csv"
+OTX_FEATURES_FILE = OUT_DIR / "cti_ml_features_latest.csv"
 
 class RealTimeMLRecommender:
     """ML-based action recommendation system for OTX threats"""
@@ -121,20 +132,68 @@ class RealTimeMLRecommender:
         
         return min(similarity, 1.0)
     
-    def train_from_synthetic_data(self, n_samples=1000):
-        """Train model on synthetic data (improves as real incidents are added)"""
-        print("\n🤖 Training ML Recommender on synthetic incident data...")
-        print("   (Model will improve as you add real incident feedback)")
-        
-        np.random.seed(42)
-        
+    def train_from_otx_data(self, n_synthetic_samples=500):
+        """
+        Train model on OTX data with synthetic augmentation.
+        Uses real OTX predictions when available for better accuracy.
+        """
+        print("\n🤖 Training ML Recommender...")
+
         X = []
         y_actions = []
-        
-        for i in range(n_samples):
+
+        # Try to load real OTX predictions
+        real_data_count = 0
+        if OTX_PREDICTIONS_FILE.exists():
+            print(f"   📂 Loading OTX predictions from {OTX_PREDICTIONS_FILE}...")
+            try:
+                predictions_df = pd.read_csv(OTX_PREDICTIONS_FILE)
+                features_df = pd.read_csv(OTX_FEATURES_FILE) if OTX_FEATURES_FILE.exists() else None
+
+                for idx, pred in predictions_df.iterrows():
+                    # Get corresponding features
+                    features_row = None
+                    if features_df is not None:
+                        features_row = features_df[features_df['pulse_id'] == pred['pulse_id']]
+                        if len(features_row) > 0:
+                            features_row = features_row.iloc[0]
+
+                    threat = {
+                        'malware_probability': pred.get('malware_probability', 0.5),
+                        'confidence': pred.get('confidence', 50),
+                        'indicator_count': pred.get('indicator_count', 0),
+                        'ip_count': features_row.get('ip_count', 0) if features_row is not None else 0,
+                        'domain_count': features_row.get('domain_count', 0) if features_row is not None else 0,
+                        'hash_count': features_row.get('hash_count', 0) if features_row is not None else 0,
+                        'url_count': features_row.get('url_count', 0) if features_row is not None else 0,
+                        'file_count': features_row.get('file_count', 0) if features_row is not None else 0,
+                        'has_adversary': 1 if pred.get('adversary', '') else 0,
+                        'has_malware': 1 if pred.get('malware_families', '') else 0,
+                        'attack_ids_count': features_row.get('attack_ids_count', 0) if features_row is not None else 0,
+                        'tlp': pred.get('tlp', 'white'),
+                        'pulse_age_hours': features_row.get('pulse_age_hours', 0) if features_row is not None else 0,
+                        'subscription_count': 0
+                    }
+
+                    # Determine action based on real threat characteristics
+                    action = self._determine_action_for_threat(threat)
+
+                    features = self.extract_threat_features(threat)
+                    X.append(features[0])
+                    y_actions.append(action)
+                    real_data_count += 1
+
+                print(f"   ✅ Loaded {real_data_count} real OTX threats")
+            except Exception as e:
+                print(f"   ⚠️  Error loading OTX data: {e}")
+
+        # Add synthetic samples to augment training data
+        print(f"   🔧 Generating {n_synthetic_samples} synthetic samples...")
+        np.random.seed(42)
+
+        for i in range(n_synthetic_samples):
             malware_prob = np.random.random()
-            
-            # Simulate threat
+
             threat = {
                 'malware_probability': malware_prob,
                 'confidence': np.random.randint(50, 100),
@@ -151,34 +210,19 @@ class RealTimeMLRecommender:
                 'pulse_age_hours': np.random.random() * 48,
                 'subscription_count': np.random.randint(0, 500)
             }
-            
-            # Determine action based on threat characteristics
-            if malware_prob >= 0.9 and threat['indicator_count'] > 50:
-                action = np.random.choice(['ACTIVATE_IR', 'ISOLATE_SYSTEMS', 'CAPTURE_FORENSICS'])
-            elif malware_prob >= 0.7:
-                if threat['ip_count'] > 20:
-                    action = 'BLOCK_IPS'
-                elif threat['domain_count'] > 20:
-                    action = 'BLOCK_DOMAINS'
-                elif threat['hash_count'] > 10:
-                    action = 'BLOCK_HASHES'
-                else:
-                    action = 'THREAT_HUNT'
-            elif malware_prob >= 0.5:
-                action = np.random.choice(['MONITOR_ALERTS', 'REVIEW_LOGS', 'SCAN_ENDPOINTS'])
-            else:
-                action = np.random.choice(['DOCUMENT_INCIDENT', 'MONITOR_ALERTS'])
-            
+
+            action = self._determine_action_for_threat(threat)
+
             features = self.extract_threat_features(threat)
             X.append(features[0])
             y_actions.append(action)
-        
+
         X = np.array(X)
         y_encoded = self.action_encoder.transform(y_actions)
-        
+
         # Train model
         X_scaled = self.scaler.fit_transform(X)
-        
+
         self.action_model = RandomForestClassifier(
             n_estimators=200,
             max_depth=20,
@@ -187,27 +231,51 @@ class RealTimeMLRecommender:
             n_jobs=-1,
             verbose=0
         )
-        
+
         self.action_model.fit(X_scaled, y_encoded)
-        
-        print(f"   ✅ Model trained on {len(X)} synthetic incidents")
-        
+
+        print(f"   ✅ Model trained on {len(X)} samples ({real_data_count} real + {n_synthetic_samples} synthetic)")
+
         # Feature importance
         feature_names = [
-            'malware_prob', 'confidence', 'total_iocs', 
+            'malware_prob', 'confidence', 'total_iocs',
             'ip_count', 'domain_count', 'hash_count', 'url_count', 'file_count',
             'ip_ratio', 'domain_ratio', 'hash_ratio',
             'has_adversary', 'has_malware', 'attack_ids',
             'tlp_level', 'pulse_age', 'subscriptions', 'diversity', 'similarity'
         ]
-        
+
         importances = self.action_model.feature_importances_
-        top_features = sorted(zip(feature_names, importances), 
+        top_features = sorted(zip(feature_names, importances),
                             key=lambda x: x[1], reverse=True)[:5]
-        
+
         print(f"\n   Top 5 features driving recommendations:")
         for i, (feature, importance) in enumerate(top_features, 1):
             print(f"      {i}. {feature}: {importance:.4f}")
+
+    def _determine_action_for_threat(self, threat):
+        """Determine appropriate action based on threat characteristics"""
+        malware_prob = threat.get('malware_probability', 0.5)
+
+        if malware_prob >= 0.9 and threat.get('indicator_count', 0) > 50:
+            return np.random.choice(['ACTIVATE_IR', 'ISOLATE_SYSTEMS', 'CAPTURE_FORENSICS'])
+        elif malware_prob >= 0.7:
+            if threat.get('ip_count', 0) > 20:
+                return 'BLOCK_IPS'
+            elif threat.get('domain_count', 0) > 20:
+                return 'BLOCK_DOMAINS'
+            elif threat.get('hash_count', 0) > 10:
+                return 'BLOCK_HASHES'
+            else:
+                return 'THREAT_HUNT'
+        elif malware_prob >= 0.5:
+            return np.random.choice(['MONITOR_ALERTS', 'REVIEW_LOGS', 'SCAN_ENDPOINTS'])
+        else:
+            return np.random.choice(['DOCUMENT_INCIDENT', 'MONITOR_ALERTS'])
+
+    def train_from_synthetic_data(self, n_samples=1000):
+        """Legacy method - redirects to train_from_otx_data"""
+        self.train_from_otx_data(n_synthetic_samples=n_samples)
     
     def predict_actions_realtime(self, threat_data, top_k=5):
         """Predict top K actions for a threat in real-time"""
@@ -387,10 +455,13 @@ class RealTimeMLRecommender:
         
         return details
     
-    def save_model(self, output_dir='models'):
+    def save_model(self, output_path=None):
         """Save trained model"""
-        os.makedirs(output_dir, exist_ok=True)
-        
+        if output_path is None:
+            output_path = REALTIME_RECOMMENDER_PATH
+
+        MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
         model_data = {
             'action_model': self.action_model,
             'action_encoder': self.action_encoder,
@@ -398,19 +469,21 @@ class RealTimeMLRecommender:
             'possible_actions': self.possible_actions,
             'trained_at': datetime.now().isoformat()
         }
-        
-        joblib.dump(model_data, f'{output_dir}/realtime_ml_recommender.pkl')
-        print(f"\n💾 Model saved: {output_dir}/realtime_ml_recommender.pkl")
+
+        joblib.dump(model_data, output_path)
+        print(f"\n💾 Model saved: {output_path}")
     
     def load_model(self, model_path=None):
         """Load trained model"""
         if model_path is None:
             model_path = REALTIME_RECOMMENDER_PATH
 
-        if not os.path.exists(model_path):
+        model_path = Path(model_path)
+
+        if not model_path.exists():
             print(f"⚠️  Model not found at {model_path}")
             print("   Training new model...")
-            self.train_from_synthetic_data()
+            self.train_from_otx_data()
             self.save_model()
             return
 
@@ -425,47 +498,66 @@ class RealTimeMLRecommender:
 def process_otx_data_with_ml_recommendations():
     """
     Main function: Load OTX data and generate ML recommendations
+    Uses threat predictions from OTX classifier for accurate scoring.
     """
     print("="*70)
     print("REAL-TIME ML ACTION RECOMMENDER - PROCESSING OTX DATA")
     print("="*70)
-    
+
     # Check for OTX ML features
-    ml_features_file = 'out/cti_ml_features_latest.csv'
-    
-    if not os.path.exists(ml_features_file):
-        print(f"\n❌ Error: {ml_features_file} not found")
+    if not OTX_FEATURES_FILE.exists():
+        print(f"\n❌ Error: {OTX_FEATURES_FILE} not found")
         print("   Run otx_fetch.py first to collect OTX data")
         return
-    
-    # Load OTX data
-    print(f"\n📂 Loading OTX threat data from {ml_features_file}...")
-    otx_df = pd.read_csv(ml_features_file)
+
+    # Load OTX features
+    print(f"\n📂 Loading OTX threat data from {OTX_FEATURES_FILE}...")
+    otx_df = pd.read_csv(OTX_FEATURES_FILE)
     print(f"   ✅ Loaded {len(otx_df)} OTX threats")
-    
+
+    # Load predictions if available (for malware_probability)
+    predictions_df = None
+    if OTX_PREDICTIONS_FILE.exists():
+        print(f"   📂 Loading predictions from {OTX_PREDICTIONS_FILE}...")
+        predictions_df = pd.read_csv(OTX_PREDICTIONS_FILE)
+        predictions_df = predictions_df.set_index('pulse_id')
+        print(f"   ✅ Loaded {len(predictions_df)} threat predictions")
+    else:
+        print("   ⚠️  No predictions file found, using heuristic scores")
+
     # Initialize ML recommender
     recommender = RealTimeMLRecommender()
-    
+
     # Load or train model
-    if os.path.exists(REALTIME_RECOMMENDER_PATH):
-        recommender.load_model(REALTIME_RECOMMENDER_PATH)
+    if REALTIME_RECOMMENDER_PATH.exists():
+        recommender.load_model(str(REALTIME_RECOMMENDER_PATH))
     else:
         print("\n🤖 No existing model found. Training new model...")
-        recommender.train_from_synthetic_data(n_samples=1000)
+        recommender.train_from_otx_data(n_synthetic_samples=500)
         recommender.save_model()
-    
+
     # Process each threat
     print(f"\n🔮 Generating ML recommendations for {len(otx_df)} threats...")
-    
+
     all_recommendations = []
-    
+
     for idx, threat in otx_df.iterrows():
-        # Convert OTX data to threat_data format
+        # Get prediction data if available
+        pulse_id = threat['pulse_id']
+        malware_prob = 0.5
+        confidence = 50
+
+        if predictions_df is not None and pulse_id in predictions_df.index:
+            pred = predictions_df.loc[pulse_id]
+            malware_prob = pred.get('malware_probability', 0.5)
+            confidence = pred.get('confidence', 50)
+
+        # Convert OTX data to threat_data format with actual predictions
         threat_data = {
-            'pulse_id': threat['pulse_id'],
+            'pulse_id': pulse_id,
             'pulse_name': threat['pulse_name'],
-            'malware_probability': 0.5,  # Default (will be replaced by AndMal detector)
-            'confidence': 50,
+            'malware_probability': malware_prob,
+            'confidence': confidence,
             'indicator_count': threat['indicator_count'],
             'ip_count': threat['ip_count'],
             'domain_count': threat['domain_count'],
@@ -480,7 +572,7 @@ def process_otx_data_with_ml_recommendations():
             'tlp': threat['tlp'],
             'tlp_level': threat['tlp_level'],
             'pulse_age_hours': threat['pulse_age_hours'],
-            'subscription_count': 0  # Not in ML features, use default
+            'subscription_count': 0
         }
         
         # Get ML recommendations
@@ -508,37 +600,40 @@ def process_otx_data_with_ml_recommendations():
     
     # Save recommendations
     rec_df = pd.DataFrame(all_recommendations)
-    output_file = 'out/ml_action_recommendations.csv'
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_file = OUT_DIR / 'ml_action_recommendations.csv'
     rec_df.to_csv(output_file, index=False)
-    
+
     print(f"\n✅ Generated {len(all_recommendations)} ML-based action recommendations")
     print(f"💾 Saved to: {output_file}")
-    
+
     # Summary statistics
     print(f"\n📊 Recommendation Summary:")
     print(f"   Total threats analyzed: {len(otx_df)}")
     print(f"   Total actions recommended: {len(all_recommendations)}")
     print(f"   Avg actions per threat: {len(all_recommendations) / len(otx_df):.1f}")
-    
+    print(f"   Using predictions: {'Yes' if predictions_df is not None else 'No (heuristic)'}")
+
     print(f"\n   Top 5 Recommended Actions:")
     top_actions = rec_df['action'].value_counts().head(5)
     for action, count in top_actions.items():
         print(f"      {action}: {count} times")
-    
+
     print(f"\n   Actions by Category:")
     categories = rec_df['action_category'].value_counts()
     for category, count in categories.items():
         print(f"      {category}: {count}")
-    
+
     print(f"\n   Confidence Distribution:")
     conf_dist = rec_df['confidence_level'].value_counts()
     for level, count in conf_dist.items():
         print(f"      {level}: {count}")
-    
+
     # Create summary JSON
     summary = {
         'timestamp': datetime.now().isoformat(),
         'model': 'RealTimeMLRecommender',
+        'using_predictions': predictions_df is not None,
         'total_threats': len(otx_df),
         'total_recommendations': len(all_recommendations),
         'avg_recommendations_per_threat': round(len(all_recommendations) / len(otx_df), 2),
@@ -546,11 +641,11 @@ def process_otx_data_with_ml_recommendations():
         'action_categories': categories.to_dict(),
         'confidence_distribution': conf_dist.to_dict()
     }
-    
-    summary_file = 'out/ml_recommendations_summary.json'
+
+    summary_file = OUT_DIR / 'ml_recommendations_summary.json'
     with open(summary_file, 'w') as f:
         json.dump(summary, f, indent=2)
-    
+
     print(f"💾 Summary saved to: {summary_file}")
     
     # Show sample recommendations
