@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Train Malware Detector on CCCS-CIC-AndMal-2020
-FIXED VERSION - correct paths for cti/data structure
+Train Malware Detector on CCCS-CIC-AndMal-2020 dataset.
 """
 
 import numpy as np
@@ -43,10 +42,10 @@ class AndMal2020Detector:
         # FIXED: Look in cti/data/andmal_processed
         data_dir = 'cti/data/andmal_processed'
         
-        print(f"\n📂 Loading preprocessed data from {data_dir}/...")
+        print(f"\n Loading preprocessed data from {data_dir}/...")
         
         if not os.path.exists(data_dir):
-            print(f"❌ Data directory not found: {data_dir}")
+            print(f" Data directory not found: {data_dir}")
             print(f"   Expected: {os.path.abspath(data_dir)}")
             print(f"\n   Run this first:")
             print(f"   python cti/prepare_andmal_ml_data.py")
@@ -58,27 +57,27 @@ class AndMal2020Detector:
             y_train = np.load(f'{data_dir}/y_train.npy')
             y_test = np.load(f'{data_dir}/y_test.npy')
             
-            print(f"   ✅ X_train: {X_train.shape}")
-            print(f"   ✅ X_test:  {X_test.shape}")
-            print(f"   ✅ y_train: {y_train.shape}")
-            print(f"   ✅ y_test:  {y_test.shape}")
+            print(f"    X_train: {X_train.shape}")
+            print(f"    X_test:  {X_test.shape}")
+            print(f"    y_train: {y_train.shape}")
+            print(f"    y_test:  {y_test.shape}")
             
             # Load scaler and feature names
             self.scaler = joblib.load(ANDMAL_SCALER_PATH)
             self.feature_names = joblib.load(ANDMAL_FEATURE_NAMES_PATH)
             
-            print(f"   ✅ Scaler loaded")
-            print(f"   ✅ Feature names loaded ({len(self.feature_names)} features)")
+            print(f"    Scaler loaded")
+            print(f"    Feature names loaded ({len(self.feature_names)} features)")
             
             return X_train, X_test, y_train, y_test
             
         except Exception as e:
-            print(f"❌ Error loading data: {e}")
+            print(f" Error loading data: {e}")
             return None, None, None, None
     
     def train(self, X_train, y_train):
         """Train the malware detection model"""
-        print(f"\n🚀 Training {self.model_name}...")
+        print(f"\nTraining {self.model_name}...")
         print(f"   Dataset: {self.dataset}")
         print(f"   Samples: {len(X_train):,}")
         print(f"   Features: {X_train.shape[1]}")
@@ -92,23 +91,23 @@ class AndMal2020Detector:
         self.model.fit(X_train, y_train)
         training_time = time.time() - start_time
         
-        print(f"✅ Training complete in {training_time:.1f} seconds ({training_time/60:.1f} minutes)")
+        print(f"Training complete in {training_time:.1f} seconds ({training_time/60:.1f} minutes)")
         
         return training_time
     
     def evaluate(self, X_test, y_test):
         """Evaluate model performance"""
-        print(f"\n📊 Evaluating {self.model_name}...")
+        print(f"\n Evaluating {self.model_name}...")
         
         y_pred = self.model.predict(X_test)
         y_proba = self.model.predict_proba(X_test)[:, 1]
         
         accuracy = (y_pred == y_test).mean()
-        print(f"\n🎯 Accuracy: {accuracy:.4f} ({accuracy*100:.2f}%)")
+        print(f"\n Accuracy: {accuracy:.4f} ({accuracy*100:.2f}%)")
         
         try:
             auc = roc_auc_score(y_test, y_proba)
-            print(f"📈 ROC-AUC: {auc:.4f}")
+            print(f"ROC-AUC: {auc:.4f}")
         except:
             auc = None
         
@@ -134,7 +133,7 @@ class AndMal2020Detector:
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
         
-        print(f"\n📈 Detailed Metrics:")
+        print(f"\n Detailed Metrics:")
         print(f"   True Positives:  {tp:6,} (Correctly identified malware)")
         print(f"   True Negatives:  {tn:6,} (Correctly identified benign)")
         print(f"   False Positives: {fp:6,} (Benign flagged as malware)")
@@ -185,7 +184,7 @@ class AndMal2020Detector:
         }
 
         joblib.dump(model_data, ANDMAL_DETECTOR_PATH)
-        print(f"\n💾 Model saved: {ANDMAL_DETECTOR_PATH}")
+        print(f"\n Model saved: {ANDMAL_DETECTOR_PATH}")
 
         metadata = {
             'model_name': self.model_name,
@@ -198,7 +197,7 @@ class AndMal2020Detector:
         with open(ANDMAL_METADATA_PATH, 'w') as f:
             json.dump(metadata, f, indent=2)
 
-        print(f"💾 Metadata saved: {ANDMAL_METADATA_PATH}")
+        print(f" Metadata saved: {ANDMAL_METADATA_PATH}")
 
 if __name__ == "__main__":
     print("="*70)
@@ -234,12 +233,12 @@ if __name__ == "__main__":
         if metrics['auc']:
             print(f"   ROC-AUC: {metrics['auc']:.4f}")
         
-        print(f"\n💾 Model saved to: models/andmal2020_detector_v1.pkl")
-        print(f"\n🚀 Next: python cti/predict_otx_with_andmal.py")
+        print(f"\n Model saved to: models/andmal2020_detector_v1.pkl")
+        print(f"\n Next: python cti/predict_otx_with_andmal.py")
         print("="*70)
         
     except Exception as e:
-        print(f"\n❌ Error: {e}")
+        print(f"\n Error: {e}")
         import traceback
         traceback.print_exc()
         exit(1)
